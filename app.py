@@ -1,5 +1,6 @@
 import streamlit as st
 import numpy as np
+import time
 
 # 导入你写好的 AI 和 原有环境的判断函数
 from student import Search
@@ -25,99 +26,64 @@ def init_game():
 if 'board' not in st.session_state:
     init_game()
 
-st.set_page_config(page_title="自适应技能五子棋", page_icon="⚔️", layout="centered")
+# 设置网页标题和布局
+st.set_page_config(page_title="技能五子棋 AI 对战", page_icon="⚔️", layout="centered")
+st.title("⚔️ 技能五子棋 Web 挑战版")
 
-# --- 响应式 CSS 优化 ---
-st.markdown("""
-    <style>
-    /* 1. 基础尺寸变量：手机端占 90% 宽度，PC端最大 500px */
-    :root {
-        --board-w: min(90vw, 500px);
-        --cell-size: calc(var(--board-w) / 11);
-    }
-
-    /* 2. 修复侧边栏文字溢出 */
-    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] button {
-        height: auto !important;
-        width: 100% !important;
-        white-space: normal !important; /* 允许文字换行 */
-        padding: 10px !important;
-        border-radius: 8px !important;
-    }
-
-    /* 3. 强制棋盘列不堆叠（关键：解决手机变竖列问题） */
-    [data-testid="stHorizontalBlock"] {
-        display: flex !important;
-        flex-wrap: nowrap !important; /* 严禁换行 */
-        gap: 0 !important;
-        width: var(--board-w) !important;
-        margin: 0 auto !important; /* 居中 */
-    }
-    
-    [data-testid="column"] {
-        width: var(--cell-size) !important;
-        flex: 0 0 var(--cell-size) !important;
-        min-width: 0 !important;
-        padding: 0 !important;
-    }
-
-    /* 4. 棋盘格子样式：正方形 + 响应式大小 */
-    [data-testid="stMain"] [data-testid="stVerticalBlock"] div:has(> button) button {
-        width: var(--cell-size) !important;
-        height: var(--cell-size) !important;
-        min-width: var(--cell-size) !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        border-radius: 0px !important;
-        border: 0.2px solid #8B4513 !important;
-        background-color: #E6C280 !important;
-        font-size: calc(var(--cell-size) * 0.7) !important; /* 图标随格子缩放 */
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        line-height: 1 !important;
-    }
-
-    /* 5. 隐藏 Streamlit 默认的一些间距 */
-    [data-testid="stMainBlockContainer"] {
-        padding-top: 2rem !important;
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("⚔️ 技能五子棋 Web")
-
-# 侧边栏
+# 侧边栏：游戏规则和状态控制
 with st.sidebar:
-    st.header("🎮 控制台")
-    if st.button("🔄 重新开始游戏"):
+    st.header("🎮 游戏控制")
+    if st.button("🔄 重新开始游戏", use_container_width=True):
         init_game()
         st.rerun()
-    
+
     st.markdown("---")
+    st.subheader("✨ 你的专属技能")
+    
+    # 技能按钮逻辑
     if not st.session_state.skill_used and not st.session_state.game_over:
-        if st.button("🌟 释放【无中生有】" if not st.session_state.skill_mode else "❌ 取消释放"):
+        btn_text = "❌ 取消释放" if st.session_state.skill_mode else "🌟 释放【无中生有】"
+        if st.button(btn_text, use_container_width=True):
             st.session_state.skill_mode = not st.session_state.skill_mode
     elif st.session_state.skill_used:
-        st.button("🚫 技能已使用", disabled=True)
+        st.button("🚫 技能本局已使用", disabled=True, use_container_width=True)
 
-# 点击逻辑
+    st.markdown("""
+    **📜 游戏规则**：
+    - 你执 **黑子 (⚫)**，先手；AI 执 **白子 (⚪)**。
+    - **技能**：每局限用一次，指定一个空位 (🔶)，AI 在下一回合**绝对不能**下在该位置。
+    - 获胜条件：五子连珠。
+    """)
+
+# 处理玩家点击棋盘的逻辑
 def handle_click(r, c):
     if st.session_state.game_over or st.session_state.current_player != PLAYER:
         return
+
+    # 1. 如果正在释放技能
     if st.session_state.skill_mode:
         if st.session_state.board[r][c] == EMPTY:
             st.session_state.board[r][c] = SKILL_P
             st.session_state.skill_used = True
             st.session_state.skill_mode = False
+        else:
+            st.toast("⚠️ 技能只能释放在没有棋子的地方！", icon="⚠️")
         return
-    if st.session_state.board[r][c] in [SKILL_A, PLAYER, AI]:
+
+    # 2. 如果是正常落子
+    if st.session_state.board[r][c] == SKILL_A:
+        st.toast("❌ 此位置被 AI 的技能封锁，不能落子！", icon="🚨")
         return
-    
+    if st.session_state.board[r][c] != EMPTY and st.session_state.board[r][c] != SKILL_P:
+        return # 位置已被占用
+
+    # 玩家落子前，清除 AI 上一回合留下的技能封锁
     st.session_state.board[st.session_state.board == SKILL_A] = EMPTY
+    
+    # 玩家落子
     st.session_state.board[r][c] = PLAYER
+
+    # 判断玩家是否获胜
     if check_win(st.session_state.board, r, c):
         st.session_state.game_over = True
         st.session_state.winner = PLAYER
@@ -125,40 +91,111 @@ def handle_click(r, c):
         st.session_state.game_over = True
         st.session_state.winner = 0
     else:
-        st.session_state.current_player = AI
+        st.session_state.current_player = AI # 轮到 AI
 
-# 渲染棋盘
-board_container = st.container()
-with board_container:
-    for i in range(11):
-        cols = st.columns(11)
-        for j in range(11):
-            val = st.session_state.board[i][j]
-            label = "" # 默认全空，去掉加号
-            if val == PLAYER: label = "⚫"
-            elif val == AI: label = "⚪"
-            elif val == SKILL_P: label = "🔶"
-            elif val == SKILL_A: label = "🔷"
-            
-            with cols[j]:
-                st.button(label, key=f"b_{i}_{j}", on_click=handle_click, args=(i, j), 
-                          disabled=st.session_state.game_over or st.session_state.current_player != PLAYER)
+# 👇 这里是全新的 CSS 魔法，修复了所有视觉问题
+st.markdown("""
+    <style>
+    /* 1. 保护侧边栏：让侧边栏的按钮恢复正常的宽度和高度，解决文字溢出！ */
+    [data-testid="stSidebar"] div.stButton > button {
+        height: auto !important;
+        width: 100% !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1rem !important;
+    }
 
-# AI 逻辑
+    /* 2. 改造棋盘按钮：变成直角方块，设置木板底色和网格边框 */
+    [data-testid="stMainBlockContainer"] div.stButton > button {
+        height: 44px;
+        width: 44px;
+        border-radius: 0px; /* 去除圆角，变成直角方便拼合 */
+        padding: 0;
+        font-size: 26px;
+        background-color: #E6C280; /* 木板色 */
+        border: 1px solid #8B4513; /* 深棕色网格线 */
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    [data-testid="stMainBlockContainer"] div.stButton > button:hover {
+        background-color: #D2B48C;
+        border: 1px solid #8B4513;
+        color: inherit;
+    }
+
+    /* 3. 缝合棋盘：强行消除 Streamlit 列与列之间的所有缝隙 */
+    [data-testid="stHorizontalBlock"] {
+        gap: 0rem !important; /* 消除左右间隙 */
+        justify-content: center; /* 让整个棋盘居中 */
+    }
+    [data-testid="column"] {
+        min-width: 0 !important;
+        padding: 0 !important; /* 消除列的内边距 */
+        width: 44px !important; /* 强制列宽等于按钮宽度 */
+        flex: none !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# 渲染 11x11 棋盘
+for i in range(11):
+    cols = st.columns(11) # 不再使用 gap 参数，全靠 CSS 缝合
+    for j in range(11):
+        val = st.session_state.board[i][j]
+        
+        # 移除了"➕"符号，使用空白字符 "\u2001" (Em Quad) 撑起空位
+        label = "\u2001" if val == EMPTY else "⚫" if val == PLAYER else "⚪" if val == AI else "🔶" if val == SKILL_P else "🔷"
+        
+        # 如果游戏结束或是 AI 回合，禁用按钮
+        disabled = st.session_state.game_over or st.session_state.current_player != PLAYER
+        
+        with cols[j]:
+            st.button(label, key=f"btn_{i}_{j}", on_click=handle_click, args=(i, j), disabled=disabled)
+
+# 轮到 AI 思考并行动
 if st.session_state.current_player == AI and not st.session_state.game_over:
-    with st.status("🤖 AI 正在思考..."):
-        move, skill = st.session_state.ai_agent.make_move(st.session_state.board.copy())
-        if skill: st.session_state.board[skill[0]][skill[1]] = SKILL_A
-        if move:
-            st.session_state.board[move[0]][move[1]] = AI
-            if check_win(st.session_state.board, move[0], move[1]):
-                st.session_state.game_over = True
-                st.session_state.winner = AI
-        st.session_state.board[st.session_state.board == SKILL_P] = EMPTY
-        st.session_state.current_player = PLAYER
-        st.rerun()
+    with st.spinner("🤖 AI 正在深度思考中 (可能会花几十秒)..."):
+        # 调用你的 AI
+        board_for_ai = st.session_state.board.copy()
+        move, skill = st.session_state.ai_agent.make_move(board_for_ai)
 
+        # AI 释放技能
+        if skill is not None:
+            sr, sc = skill
+            st.session_state.board[sr][sc] = SKILL_A
+
+        # AI 落子
+        if move is not None:
+            mr, mc = move
+            if st.session_state.board[mr][mc] == SKILL_P:
+                # 检查 AI 是否违规下在了玩家封锁的地方
+                st.session_state.game_over = True
+                st.session_state.winner = PLAYER
+                st.error("🎉 AI 尝试在被封锁的位置落子，AI 违规直接判负！")
+            else:
+                st.session_state.board[mr][mc] = AI
+                if check_win(st.session_state.board, mr, mc):
+                    st.session_state.game_over = True
+                    st.session_state.winner = AI
+                elif is_board_full(st.session_state.board):
+                    st.session_state.game_over = True
+                    st.session_state.winner = 0
+
+        # AI 落子后，清除玩家上一回合留下的技能封锁
+        st.session_state.board[st.session_state.board == SKILL_P] = EMPTY
+
+        if not st.session_state.game_over:
+            st.session_state.current_player = PLAYER
+            st.rerun() # 刷新界面，交还给玩家
+
+# 游戏结束提示
 if st.session_state.game_over:
-    if st.session_state.winner == PLAYER: st.success("🎉 你赢了！")
-    elif st.session_state.winner == AI: st.error("💀 AI 赢了！")
-    else: st.info("🤝 平局")
+    if st.session_state.winner == PLAYER:
+        st.success("🎉 恭喜！你战胜了 AI！")
+        st.balloons()
+    elif st.session_state.winner == AI:
+        st.error("💻 AI 获胜了，再接再厉！人类的荣耀需要你来守护！")
+    else:
+        st.info("🤝 双方平局！棋逢对手。")
