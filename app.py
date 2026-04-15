@@ -97,35 +97,60 @@ def handle_click(r, c):
         st.session_state.current_player = AI  # 轮到 AI
 
 
-# 绘制棋盘样式
+# 👇 这里是全新的 CSS 魔法，修复了所有视觉问题
 st.markdown("""
     <style>
-    /* 把按钮变成方形，去除多余的边距，像真正的棋盘一样 */
-    div.stButton > button {
-        height: 38px;
-        width: 38px;
-        border-radius: 4px;
-        padding: 0;
-        font-size: 20px;
-        background-color: #DEB887; 
-        border: 1px solid #8B4513;
+    /* 1. 保护侧边栏：让侧边栏的按钮恢复正常的宽度和高度，解决文字溢出！ */
+    [data-testid="stSidebar"] div.stButton > button {
+        height: auto !important;
+        width: 100% !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1rem !important;
     }
-    div.stButton > button:hover {
+
+    /* 2. 改造棋盘按钮：变成直角方块，设置木板底色和网格边框 */
+    [data-testid="stMainBlockContainer"] div.stButton > button {
+        height: 44px;
+        width: 44px;
+        border-radius: 0px; /* 去除圆角，变成直角方便拼合 */
+        padding: 0;
+        font-size: 26px;
+        background-color: #E6C280; /* 木板色 */
+        border: 1px solid #8B4513; /* 深棕色网格线 */
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    [data-testid="stMainBlockContainer"] div.stButton > button:hover {
         background-color: #D2B48C;
         border: 1px solid #8B4513;
         color: inherit;
+    }
+
+    /* 3. 缝合棋盘：强行消除 Streamlit 列与列之间的所有缝隙 */
+    [data-testid="stHorizontalBlock"] {
+        gap: 0rem !important; /* 消除左右间隙 */
+        justify-content: center; /* 让整个棋盘居中 */
+    }
+    [data-testid="column"] {
+        min-width: 0 !important;
+        padding: 0 !important; /* 消除列的内边距 */
+        width: 44px !important; /* 强制列宽等于按钮宽度 */
+        flex: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # 渲染 11x11 棋盘
 for i in range(11):
-    cols = st.columns(11, gap="small")
+    cols = st.columns(11)  # 不再使用 gap 参数，全靠 CSS 缝合
     for j in range(11):
         val = st.session_state.board[i][j]
 
-        # 根据状态显示不同的符号
-        label = "➕" if val == EMPTY else "⚫" if val == PLAYER else "⚪" if val == AI else "🔶" if val == SKILL_P else "🔷"
+        # 移除了"➕"符号，使用空白字符 "\u2001" (Em Quad) 撑起空位
+        label = "\u2001" if val == EMPTY else "⚫" if val == PLAYER else "⚪" if val == AI else "🔶" if val == SKILL_P else "🔷"
 
         # 如果游戏结束或是 AI 回合，禁用按钮
         disabled = st.session_state.game_over or st.session_state.current_player != PLAYER
